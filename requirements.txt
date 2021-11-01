@@ -1,7 +1,13 @@
+numpy==1.19.5
+scipy==1.7.0
+tensorflow==2.6.0
+tensorboard==2.6.0
 psola==0.0.1
 wget==3.2
 pysptk==0.1.18
 frozendict==2.0.3
+torch
+torchvision
 torch_stft==0.1.4
 kaldiio==2.17.2
 pydub==0.25.1
