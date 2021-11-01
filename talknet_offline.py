@@ -12,6 +12,6 @@ if __name__ == "__main__":
     else:
         app.run_server(
             mode="external",
-            debug=False,
+            debug=True,
             threaded=True,
         )
