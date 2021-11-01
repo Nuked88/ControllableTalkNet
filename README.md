@@ -18,6 +18,11 @@ and extract it to a folder.
 * Run setup.bat. The initial setup will take about 20 minutes.
 * When it's done, run talknet.bat to start TalkNet on http://127.0.0.1:8050/. To download updates, run update.bat.
 
+### TalkNet Offline (Windows) CLI
+* Clone this repo
+* run ```pip install -r requrements.txt```
+* run ```python cli_controllable_talknet.py```
+
 ### Docker (Linux)
 * Install Docker and NVIDIA Container Toolkit.
 * [Download the Dockerfile.](https://raw.githubusercontent.com/SortAnon/ControllableTalkNet/main/Dockerfile)
