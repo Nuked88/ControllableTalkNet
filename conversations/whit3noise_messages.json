@@ -230,5 +230,13 @@
       {
             "is_user": false,
             "text": " I do too, it's a great game. What do you like to do for fun?"
+      },
+      {
+            "is_user": true,
+            "text": "hi how are you?"
+      },
+      {
+            "is_user": false,
+            "text": " I'm doing well, thank you. How about you? What are some of your hobbies?"
       }
 ]
