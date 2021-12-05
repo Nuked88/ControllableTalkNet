@@ -1,6 +1,7 @@
 import sys
 import os
 import base64
+from typing import Text
 import torch
 import numpy as np
 import tensorflow as tf
@@ -22,7 +23,7 @@ import zipfile
 import resampy
 import traceback
 import ffmpeg
-
+from flask import Flask, request, render_template, send_from_directory, Response
 import uuid
 import re
 from argparse import ArgumentParser
@@ -34,144 +35,114 @@ from models import Generator
 from denoiser import Denoiser
 
 
-p = ArgumentParser()
-p.add_argument("--output", "-o", default="output", help="wav output directory", required=True)
-p.add_argument("--model", "-m", default="1QnOliOAmerMUNuo2wXoH-YoainoSjZen", help="drive ID")
-p.add_argument("--device", "-d", type=str, default="cuda:0", help="device to use, cpu or cuda")
-p.add_argument("--string", "-s", default="")
-p.add_argument("--text", "-t", default=False)
-args = p.parse_args()
+from transformers import BlenderbotTokenizer, BlenderbotForConditionalGeneration, AutoTokenizer, AutoModelForSequenceClassification, AutoConfig, Conversation, ConversationalPipeline
+from transformers import AutoModelForSequenceClassification
+from transformers import AutoTokenizer
+import numpy as np
+from scipy.special import softmax
+import csv
+import time
+import rtmidi
 
 
+#p = ArgumentParser()
+#p.add_argument("--output", "-o", default="output", help="wav output directory", required=True)
+#p.add_argument("--model", "-m", default="1QnOliOAmerMUNuo2wXoH-YoainoSjZen", help="drive ID")
+#p.add_argument("--device", "-d", type=str, default="cuda:0", help="device to use, cpu or cuda")
+#p.add_argument("--string", "-s", default="")
+#p.add_argument("--text", "-t", default=False)
+#args = p.parse_args()
+
+DEVICE = "cpu" 
+DEVICE2 = "cuda:0" if torch.cuda.is_available() else "cpu"
+midiout = rtmidi.MidiOut()
+available_ports = midiout.get_ports()
+midiout.open_port(2) # Select midi port
 
 
-DEVICE = "cuda:0"
 CPU_PITCH = False
 RUN_PATH = os.path.dirname(os.path.realpath(__file__))
-if RUN_PATH == "/content":
-    UI_MODE = "colab"
-elif os.path.exists("/talknet/is_docker"):
-    UI_MODE = "docker"
-else:
-    UI_MODE = "offline"
+
+UI_MODE = "offline"
 torch.set_grad_enabled(False)
+
 if CPU_PITCH:
     tf.config.set_visible_devices([], "GPU")
 DICT_PATH = os.path.join(RUN_PATH, "horsewords.clean")
 
+# Load models and tokenizer for Blenderbot and sentiment analysis
+mname = "facebook/blenderbot-1B-distill"
+model_bb = BlenderbotForConditionalGeneration.from_pretrained(mname).to(DEVICE2)
+tokenizer_bb = BlenderbotTokenizer.from_pretrained(mname)
+nlp = ConversationalPipeline(model=model_bb, tokenizer=tokenizer_bb, device=0)
+
+
+task='sentiment'
+MODEL_S = f"cardiffnlp/twitter-roberta-base-{task}"
+MODELP = f"C:\\Users\\nuked\\OneDrive\\Documents\\Script\\TalkNet\\ControllableTalkNet\\sentiment"
+MODELPR = f"C:\\Users\\nuked\\OneDrive\\Documents\\Script\\TalkNet\\ControllableTalkNet\\twitter-roberta-base-sentiment"
+
+#DO ONLY THE FIRST TIME
+#tokenizer = AutoTokenizer.from_pretrained(MODEL_S)
+#tokenizer.save_pretrained(MODELP)
+#config.save_pretrained(MODELP)
+
+config_sent = AutoConfig.from_pretrained(MODELP)
+tokenizer_sent = AutoTokenizer.from_pretrained(MODELP)
+model_sent = AutoModelForSequenceClassification.from_pretrained(MODELPR).to(DEVICE2)
 
 
 
-def init_dropdown(value):
-    if UI_MODE == "docker":
-        upload_style = upload_display
-    else:
-        upload_style = None
+def preprocess(text):
+    new_text = []
+ 
+ 
+    for t in text.split(" "):
+        t = '@user' if t.startswith('@') and len(t) > 1 else t
+        t = 'http' if t.startswith('http') else t
+        new_text.append(t)
+    return " ".join(new_text)
 
-    dropdown = [
-        {
-            "label": "Custom model",
-            "value": "Custom|default",
-        }
-    ]
-    prev_values = ["Custom|default"]
 
-    def add_to_dropdown(entry):
-        if entry["value"] in prev_values:
-            return
-        dropdown.append(entry)
-        prev_values.append(entry["value"])
+def play(note, duration):
+    midiout.send_message([0x90, note, 0x7f])
+    time.sleep(duration)
+    midiout.send_message([0x80, note, 0x7f])
 
-    all_dict = {}
-    for filename in os.listdir("model_lists"):
-        if len(filename) < 5 or filename[-5:].lower() != ".json":
-            continue
-        with open(os.path.join("model_lists", filename)) as f:
-            j = json.load(f)
-            for s in j:
-                for c in s["characters"]:
-                    c["source_file"] = filename[:-5]
-                if s["source"] not in all_dict:
-                    all_dict[s["source"]] = s["characters"]
-                else:
-                    all_dict[s["source"]].extend(s["characters"])
-    for k in sorted(all_dict):
-        seen_chars = []
-        seen_ids = []
-        characters = {}
-        characters_sing = {}
-        has_singers = False
-        for c in all_dict[k]:
-            if c["drive_id"] in seen_ids:
-                continue
-            seen_ids.append(c["drive_id"])
-            # Handle duplicate names
-            if c["name"] in seen_chars:
-                if c["name"] in characters:
-                    rename = (
-                        c["name"] + " [" + characters[c["name"]]["source_file"] + "]"
-                    )
-                    characters[rename] = characters[c["name"]]
-                    del characters[c["name"]]
-                c["name"] = c["name"] + " [" + c["source_file"] + "]"
-            else:
-                seen_chars.append(c["name"])
 
-            characters[c["name"]] = {
-                "drive_id": c["drive_id"],
-                "is_singing": c["is_singing"],
-                "source_file": c["source_file"],
-            }
-            if c["is_singing"]:
-                has_singers = True
-        if has_singers:
-            for ck in sorted(characters):
-                if characters[ck]["is_singing"]:
-                    characters_sing[ck] = characters[ck]
-                    del characters[ck]
-            separator = "--- " + k.strip().upper() + " MODELS (TALKING) ---"
+def signals(i):
+        switcher={
+                "negative":40,
+                "neutral":36,
+                "positive":38
+
+             }
+        return switcher.get(i,"Invalid day of week")
+
+
+def list2file(l,f):
+    with open(f, 'w') as f:
+        json.dump(l, f, indent = 6)
+
+def file2list(f):
+    with open(f, 'r') as f:
+        return json.load(f)
+
+
+def load_history(f,conversation):
+    
+    jj = file2list(f)
+
+    for j in jj:
+        if j["is_user"]==False:
+            #print(j["text"])
+            conversation.append_response(j["text"])
+            conversation.mark_processed()
         else:
-            separator = "--- " + k.strip().upper() + " MODELS ---"
-        if len(characters) > 0:
-            add_to_dropdown(
-                {
-                    "label": separator,
-                    "value": str(uuid.uuid4()) + "|default",
-                    "disabled": True,
-                }
-            )
-            for ck in sorted(characters):
-                add_to_dropdown(
-                    {
-                        "label": ck,
-                        "value": characters[ck]["drive_id"] + "|default",
-                    }
-                )
-        if has_singers:
-            separator = "--- " + k.strip().upper() + " MODELS (SINGING) ---"
-            add_to_dropdown(
-                {
-                    "label": separator,
-                    "value": str(uuid.uuid4()) + "|default",
-                    "disabled": True,
-                }
-            )
-            for ck in sorted(characters_sing):
-                add_to_dropdown(
-                    {
-                        "label": ck,
-                        "value": characters_sing[ck]["drive_id"] + "|singing",
-                    }
-                )
-    if len(all_dict) == 0:
-        add_to_dropdown(
-            {
-                "label": "--- NO MODEL LISTS FOUND ---",
-                "value": str(uuid.uuid4()) + "|default",
-                "disabled": True,
-            }
-        )
-    return [dropdown, upload_style]
+            conversation.add_user_input(j["text"])
+        
+    return conversation
+
 
 
 
@@ -213,8 +184,8 @@ def smart_split_list(full_text,max_lenght):
 
 def load_hifigan(model_name, conf_name):
     # Load HiFi-GAN
-    print(f"Load HiFi-GAN {model_name} conf {conf_name}")
     conf = os.path.join("hifi-gan", conf_name + ".json")
+    print(f"Load HiFi-GAN {model_name} conf {conf_name}")
     with open(conf) as f:
         json_config = json.loads(f.read())
     h = AttrDict(json_config)
@@ -533,7 +504,7 @@ def save_upload(uploaded_filenames, uploaded_file_contents):
                 with open(os.path.join(RUN_PATH, name), "wb") as fp:
                     fp.write(base64.decodebytes(data))
     except Exception as e:
-        return str(e)
+        return "CCCCCCCC"+str(e)
     return "Uploaded " + str(len(uploaded_filenames)) + " file(s)"
 
 
@@ -591,54 +562,53 @@ hifigan_sr = None
 
 
 def download_model(model, custom_model):
-    try:
-        global hifigan_sr, h2, denoiser_sr
-        d = "https://drive.google.com/uc?id="
-        if model == "Custom":
-            drive_id = custom_model
-        else:
-            drive_id = model
-        if drive_id == "" or drive_id is None:
-            return ("Missing Drive ID", None, None)
-        if not os.path.exists(os.path.join(RUN_PATH, "models")):
-            os.mkdir(os.path.join(RUN_PATH, "models"))
-        if not os.path.exists(os.path.join(RUN_PATH, "models", drive_id)):
-            os.mkdir(os.path.join(RUN_PATH, "models", drive_id))
-            zip_path = os.path.join(RUN_PATH, "models", drive_id, "model.zip")
-            gdown.download(
-                d + drive_id,
-                zip_path,
-                quiet=False,
-            )
-            if not os.path.exists(zip_path):
-                os.rmdir(os.path.join(RUN_PATH, "models", drive_id))
-                return ("Model download failed", None, None)
-            if os.stat(zip_path).st_size < 16:
-                os.remove(zip_path)
-                os.rmdir(os.path.join(RUN_PATH, "models", drive_id))
-                return ("Model zip is empty", None, None)
-            with zipfile.ZipFile(zip_path, "r") as zip_ref:
-                zip_ref.extractall(os.path.join(RUN_PATH, "models", drive_id))
-            os.remove(zip_path)
-        print("Download super-resolution HiFi-GAN")
-        # Download super-resolution HiFi-GAN
-        sr_path = "hifi-gan/hifisr"
-        if not os.path.exists(sr_path):
-            gdown.download(
-                d + "14fOprFAIlCQkVRxsfInhEPG0n-xN4QOa", sr_path, quiet=False
-            )
-        if not os.path.exists(sr_path):
-            raise Exception("HiFI-GAN model failed to download!")
-        if hifigan_sr is None:
-            hifigan_sr, h2, denoiser_sr = load_hifigan(sr_path, "config_32k")
-        print("END DOWNLOAD")
-        return (
-            None,
-            os.path.join(RUN_PATH, "models", drive_id, "TalkNetSpect.nemo"),
-            os.path.join(RUN_PATH, "models", drive_id, "hifiganmodel"),
+
+    global hifigan_sr, h2, denoiser_sr
+    d = "https://drive.google.com/uc?id="
+    if model == "Custom":
+        drive_id = custom_model
+    else:
+        drive_id = model
+    if drive_id == "" or drive_id is None:
+        return ("Missing Drive ID", None, None)
+    if not os.path.exists(os.path.join(RUN_PATH, "models")):
+        os.mkdir(os.path.join(RUN_PATH, "models"))
+    if not os.path.exists(os.path.join(RUN_PATH, "models", drive_id)):
+        os.mkdir(os.path.join(RUN_PATH, "models", drive_id))
+        zip_path = os.path.join(RUN_PATH, "models", drive_id, "model.zip")
+        gdown.download(
+            d + drive_id,
+            zip_path,
+            quiet=False,
         )
-    except Exception as e:
-        return (str(e), None, None)
+        if not os.path.exists(zip_path):
+            os.rmdir(os.path.join(RUN_PATH, "models", drive_id))
+            return ("Model download failed", None, None)
+        if os.stat(zip_path).st_size < 16:
+            os.remove(zip_path)
+            os.rmdir(os.path.join(RUN_PATH, "models", drive_id))
+            return ("Model zip is empty", None, None)
+        with zipfile.ZipFile(zip_path, "r") as zip_ref:
+            zip_ref.extractall(os.path.join(RUN_PATH, "models", drive_id))
+        os.remove(zip_path)
+    print("Download super-resolution HiFi-GAN")
+    # Download super-resolution HiFi-GAN
+    sr_path = "hifi-gan/hifisr"
+    if not os.path.exists(sr_path):
+        gdown.download(
+            d + "14fOprFAIlCQkVRxsfInhEPG0n-xN4QOa", sr_path, quiet=False
+        )
+    if not os.path.exists(sr_path):
+        raise Exception("HiFI-GAN model failed to download!")
+    if hifigan_sr is None:
+        hifigan_sr, h2, denoiser_sr = load_hifigan(sr_path, "config_32k")
+    print("END DOWNLOAD")
+    return (
+        None,
+        os.path.join(RUN_PATH, "models", drive_id, "TalkNetSpect.nemo"),
+        os.path.join(RUN_PATH, "models", drive_id, "hifiganmodel"),
+    )
+
 
 
 tnmodel, tnpath, tndurs, tnpitch = None, None, None, None
@@ -646,17 +616,107 @@ hifigan, h, denoiser, hifipath = None, None, None, None
 
 
 
-def generate_audio(
-    n_clicks,
-    model,
-    custom_model,
-    transcript,
-    pitch_options,
-    pitch_factor,
-    wav_name="wavname",
-    f0s=None,
-    f0s_wo_silence=None,
-):
+
+
+
+
+
+def blande_sentiment(UTTERANCE,tokenizer_bb,DEVICE2,model_bb,model_sent,tokenizer_sent,name="test"):
+    #UTTERANCE= input(f"sss{DEVICE}: ")
+    try:
+        conversation = Conversation()
+        fname=f"conversations/{name}_messages.json"
+        conversation= load_history(fname,conversation)
+
+
+        conversation.add_user_input(UTTERANCE)
+        result = nlp([conversation], do_sample=False, max_length=1000)
+        
+        messages = []
+        for is_user, text in result.iter_texts():
+            messages.append({
+                'is_user': is_user,
+                'text': text
+                
+            })
+        output_bb =messages[len(messages)-1]["text"].strip()
+        print(output_bb)
+        list2file(messages,fname)
+        #inputs = tokenizer_bb([UTTERANCE], return_tensors='pt').to(DEVICE2)
+        #reply_ids = model_bb.generate(**inputs)
+        #output_bb= tokenizer_bb.batch_decode(reply_ids)[0].replace("<s> ", "").replace("</s>", "")
+
+        #output_bb= tokenizer_bb.batch_decode(reply_ids)
+
+        # Transform input tokens 
+
+        # Tasks:
+        # emoji, emotion, hate, irony, offensive, sentiment
+        # stance/abortion, stance/atheism, stance/climate, stance/feminist, stance/hillary
+
+        # download label mapping
+        labels=[]
+        mapping_link = f"0	negative\n1	neutral\n2	positive\n"
+
+        html = mapping_link.split("\n")
+        csvreader = csv.reader(html, delimiter='\t')
+        labels = [row[1] for row in csvreader if len(row) > 1]
+
+
+        #text = preprocess(output_bb)
+        #react to the question not at the answer
+        text = preprocess(UTTERANCE)
+        encoded_input = tokenizer_sent(text, return_tensors='pt').to(DEVICE2)
+        outputs = model_sent(**encoded_input)
+        scores = outputs[0][0].cpu().detach().numpy()
+        scores = softmax(scores)
+
+        ranking = np.argsort(scores)
+        ranking = ranking[::-1]
+
+        
+        label=None
+
+        for i in range(scores.shape[0]):
+            l = labels[ranking[i]]
+            s = scores[ranking[i]]
+
+            if(s>0.8):
+                label=l
+
+
+        if label==None:
+            label="neutral"
+
+        print(f"Sentiment detected: {label}")
+        return label,str(output_bb)
+    except Exception as e:
+        return "neutral",str(e)
+
+
+def pad_audio(data, fs, T):
+    # Calculate target number of samples
+    N_tar = int(fs * T)
+    # Calculate number of zero samples to append
+    shape = data.shape
+    # Create the target shape    
+    N_pad = N_tar - shape[0]
+    print("Padding with %s seconds of silence" % str(N_pad/fs) )
+    shape = (N_pad,) + shape[1:]
+    # Stack only if there is something to append    
+    if shape[0] > 0:                
+        if len(shape) > 1:
+            return np.vstack((np.zeros(shape),
+                              data))
+        else:
+            return np.hstack((np.zeros(shape),
+                              data))
+    else:
+        return data
+
+
+def generate_audio(n_clicks,model,custom_model,transcript,pitch_options,pitch_factor,wav_name="wavname",f0s=None,f0s_wo_silence=None):
+
     print("START")
     global tnmodel, tnpath, tndurs, tnpitch, hifigan, h, denoiser, hifipath
 
@@ -691,84 +751,85 @@ def generate_audio(
             None,
         ]
     
-    try:
 
-        with torch.no_grad():
-            if tnpath != talknet_path:
-                singer_path = os.path.join(
-                    os.path.dirname(talknet_path), "TalkNetSinger.nemo"
-                )
-                if os.path.exists(singer_path):
-                    tnmodel = TalkNetSingerModel.restore_from(singer_path)
-                else:
-                    tnmodel = TalkNetSpectModel.restore_from(talknet_path)
-                durs_path = os.path.join(
-                    os.path.dirname(talknet_path), "TalkNetDurs.nemo"
-                )
-                pitch_path = os.path.join(
-                    os.path.dirname(talknet_path), "TalkNetPitch.nemo"
-                )
-                if os.path.exists(durs_path):
-                    tndurs = TalkNetDursModel.restore_from(durs_path)
-                    tnmodel.add_module("_durs_model", tndurs)
-                    tnpitch = TalkNetPitchModel.restore_from(pitch_path)
-                    tnmodel.add_module("_pitch_model", tnpitch)
-                else:
-                    tndurs = None
-                    tnpitch = None
-                tnmodel.eval()
-                tnpath = talknet_path
-
-                
-            print("heloo")
-            token_list = arpa_parse(transcript, tnmodel)
-            tokens = torch.IntTensor(token_list).view(1, -1).to(DEVICE)
-            arpa = to_arpa(token_list)
-
-            if "dra" in pitch_options:
-                if tndurs is None or tnpitch is None:
-                    return [
-                        None,
-                        "Model doesn't support pitch prediction",
-                        None,
-                        None,
-                    ]
-                spect = tnmodel.generate_spectrogram(tokens=tokens)
+    print("heloo")
+    with torch.no_grad():
+        if tnpath != talknet_path:
+            singer_path = os.path.join(
+                os.path.dirname(talknet_path), "TalkNetSinger.nemo"
+            )
+            if os.path.exists(singer_path):
+                tnmodel = TalkNetSingerModel.restore_from(singer_path).to(DEVICE)
             else:
-                durs = get_duration(wav_name, transcript, token_list)
+                tnmodel = TalkNetSpectModel.restore_from(talknet_path).to(DEVICE)
+            durs_path = os.path.join(
+                os.path.dirname(talknet_path), "TalkNetDurs.nemo"
+            )
+            pitch_path = os.path.join(
+                os.path.dirname(talknet_path), "TalkNetPitch.nemo"
+            )
+            if os.path.exists(durs_path):
+                tndurs = TalkNetDursModel.restore_from(durs_path)
+                tnmodel.add_module("_durs_model", tndurs)
+                tnpitch = TalkNetPitchModel.restore_from(pitch_path)
+                tnmodel.add_module("_pitch_model", tnpitch)
+            else:
+                tndurs = None
+                tnpitch = None
+            tnmodel.to(DEVICE)
+            tnmodel.eval()
+            tnpath = talknet_path
 
-                # Change pitch
-                if "pf" in pitch_options:
-                    f0_factor = np.power(np.e, (0.0577623 * float(pitch_factor)))
-                    f0s = [x * f0_factor for x in f0s]
-                    f0s_wo_silence = [x * f0_factor for x in f0s_wo_silence]
+            
+        print("heloo")
+        token_list = arpa_parse(transcript, tnmodel)
+        tokens = torch.IntTensor(token_list).view(1, -1).to(DEVICE)
+        arpa = to_arpa(token_list)
 
-                spect = tnmodel.force_spectrogram(
-                    tokens=tokens,
-                    durs=torch.from_numpy(durs)
-                    .view(1, -1)
-                    .type(torch.LongTensor)
-                    .to(DEVICE),
-                    f0=torch.FloatTensor(f0s).view(1, -1).to(DEVICE),
-                )
+        if "dra" in pitch_options:
+            if tndurs is None or tnpitch is None:
+                return [
+                    None,
+                    "Model doesn't support pitch prediction",
+                    None,
+                    None,
+                ]
+            spect = tnmodel.generate_spectrogram(tokens=tokens)
+        else:
+            durs = get_duration(wav_name, transcript, token_list)
 
-            if hifipath != hifigan_path:
-                hifigan, h, denoiser = load_hifigan(hifigan_path, "config_v1")
-                hifipath = hifigan_path
+            # Change pitch
+            if "pf" in pitch_options:
+                f0_factor = np.power(np.e, (0.0577623 * float(pitch_factor)))
+                f0s = [x * f0_factor for x in f0s]
+                f0s_wo_silence = [x * f0_factor for x in f0s_wo_silence]
 
-            y_g_hat = hifigan(spect.float())
-            audio = y_g_hat.squeeze()
-            audio = audio * MAX_WAV_VALUE
-            audio_denoised = denoiser(audio.view(1, -1), strength=35)[:, 0]
-            audio_np = (
-                audio_denoised.detach().cpu().numpy().reshape(-1).astype(np.int16)
+            spect = tnmodel.force_spectrogram(
+                tokens=tokens,
+                durs=torch.from_numpy(durs)
+                .view(1, -1)
+                .type(torch.LongTensor)
+                .to(DEVICE),
+                f0=torch.FloatTensor(f0s).view(1, -1).to(DEVICE),
             )
 
-            # Auto-tuning
-            if "pc" in pitch_options and "dra" not in pitch_options:
+        if hifipath != hifigan_path:
+            hifigan, h, denoiser = load_hifigan(hifigan_path, "config_v1")
+            hifipath = hifigan_path
+        print("heloo")
+        y_g_hat = hifigan(spect.float())
+        audio = y_g_hat.squeeze()
+        audio = audio * MAX_WAV_VALUE
+        audio_denoised = denoiser(audio.view(1, -1), strength=35)[:, 0]
+        audio_np = (
+            audio_denoised.detach().cpu().numpy().reshape(-1).astype(np.int16)
+        )
+
+        # Auto-tuning
+        if "pc" in pitch_options and "dra" not in pitch_options:
                 _, output_freq, _, _ = crepe.predict(audio_np, 22050, viterbi=True)
                 output_pitch = torch.from_numpy(output_freq.astype(np.float32))
-                target_pitch = torch.FloatTensor(f0s_wo_silence)
+                target_pitch = torch.FloatTensor(f0s_wo_silence).to(DEVICE)
                 factor = torch.mean(output_pitch) / torch.mean(target_pitch)
 
                 octaves = [0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0]
@@ -791,78 +852,96 @@ def generate_audio(
                 audio_np = audio_np * normalize * MAX_WAV_VALUE
                 audio_np = audio_np.astype(np.int16)
 
-            # Resample to 32k
-            wave = resampy.resample(
-                audio_np,
-                h.sampling_rate,
-                h2.sampling_rate,
-                filter="sinc_window",
-                window=scipy.signal.windows.hann,
-                num_zeros=8,
-            )
-            wave_out = wave.astype(np.int16)
-
-            # HiFi-GAN super-resolution
-            wave = wave / MAX_WAV_VALUE
-            wave = torch.FloatTensor(wave).to(torch.device(DEVICE))
-            new_mel = mel_spectrogram(
-                wave.unsqueeze(0),
-                h2.n_fft,
-                h2.num_mels,
-                h2.sampling_rate,
-                h2.hop_size,
-                h2.win_size,
-                h2.fmin,
-                h2.fmax,
-            )
-            y_g_hat2 = hifigan_sr(new_mel)
-            audio2 = y_g_hat2.squeeze()
-            audio2 = audio2 * MAX_WAV_VALUE
-            audio2_denoised = denoiser(audio2.view(1, -1), strength=35)[:, 0]
-
-            # High-pass filter, mixing and denormalizing
-            audio2_denoised = audio2_denoised.detach().cpu().numpy().reshape(-1)
-            b = scipy.signal.firwin(
-                101, cutoff=10500, fs=h2.sampling_rate, pass_zero=False
-            )
-            y = scipy.signal.lfilter(b, [1.0], audio2_denoised)
-            y *= 4.0  # superres strength
-            y_out = y.astype(np.int16)
-            y_padded = np.zeros(wave_out.shape)
-            y_padded[: y_out.shape[0]] = y_out
-            sr_mix = wave_out + y_padded
-
-            buffer = io.BytesIO()
-            wavfile.write(args.output, 30000, sr_mix.astype(np.int16))
+        # Resample to 32k
+        wave = resampy.resample(
+            audio_np,
+            h.sampling_rate,
+            h2.sampling_rate,
+            filter="sinc_window",
+            window=scipy.signal.windows.hann,
+            num_zeros=8,
+        )
+        wave_out = wave.astype(np.int16)
+        print("helooa")
+        # HiFi-GAN super-resolution
+        wave = wave / MAX_WAV_VALUE
+        wave = torch.FloatTensor(wave).to(DEVICE)
+        new_mel = mel_spectrogram(
+            wave.unsqueeze(0),
+            h2.n_fft,
+            h2.num_mels,
+            h2.sampling_rate,
+            h2.hop_size,
+            h2.win_size,
+            h2.fmin,
+            h2.fmax,
+        )
+        y_g_hat2 = hifigan_sr(new_mel)
+        audio2 = y_g_hat2.squeeze()
+        audio2 = audio2 * MAX_WAV_VALUE
+        audio2_denoised = denoiser(audio2.view(1, -1), strength=35)[:, 0]
+        print("heloox")
+        # High-pass filter, mixing and denormalizing
+        audio2_denoised = audio2_denoised.detach().cpu().numpy().reshape(-1)
+        b = scipy.signal.firwin(
+            101, cutoff=10500, fs=h2.sampling_rate, pass_zero=False
+        )
+        y = scipy.signal.lfilter(b, [1.0], audio2_denoised)
+        y *= 4.0  # superres strength
+        y_out = y.astype(np.int16)
+        y_padded = np.zeros(wave_out.shape)
+        y_padded[: y_out.shape[0]] = y_out
+        sr_mix = wave_out + y_padded
+        out_data = pad_audio(sr_mix, 30000, 6)
+        print("heloof")
+        buffer = io.BytesIO()
+        
+        wavfile.write(wav_name+".wav", 30000, out_data.astype(np.int16))
   
 
-            return None
-    except Exception:
-        return [
-            None,
-            str(traceback.format_exc()),
-            None,
-            None,
-        ]
+        return None
 
-def play_audio(audio_path):
-    """
-    Play audio
-    """
-    try:
-        if sys.platform == "win32":
-            os.startfile(audio_path)
-        else:
-            opener = "open" if sys.platform == "darwin" else "xdg-open"
-            subprocess.call([opener, audio_path])
-    except Exception:
-        return str(traceback.format_exc())
-        
-if args.text==False:
-    generate_audio(8, args.model+"|default",None,args.string,"dra",0,args.output)
-else:
-    f = open(args.text, "r")
-    user_input_init = f.read()
-    generate_audio(8, args.model+"|default",None,user_input_init,"dra",0,args.output)
-    play_audio("ok.wav")
 
+def sanitize_input(input_str):
+    return input_str.replace("\n", " ").replace("\r", " ").replace("\t", " ").replace("’", "'").replace("“", "\"").replace("”", "\"")
+
+def sanitize_output(text):
+    return text.replace("\n", " ").replace("\r", " ").replace("\t", " ").replace("’", "'").replace("“", "\"").replace("”", "\"").replace("?", "?,")
+
+app  = Flask(__name__)
+
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    if request.args.get("text")!=None:
+        #get text
+        req_text = sanitize_input(request.args.get("text"))
+        print(req_text)
+        #get answer and sentiment
+        l,answer = blande_sentiment(req_text,tokenizer_bb,DEVICE2,model_bb,model_sent,tokenizer_sent)
+        answer = sanitize_output(answer)
+        print(answer)
+        #get audio voice
+        generate_audio(8, "1QnOliOAmerMUNuo2wXoH-YoainoSjZen|default",None,answer,"dra",0,"ok")
+        #send midi for control the character
+        play(signals(l),1.5)
+        #create interface and play audio
+        return "<h1>Hello World</h1><form><input name='text'><input type='submit'></form><br><audio controls autoplay>  <source src=\"http://127.0.0.1:5000/wav\" type=\"audio/x-wav\"> </audio>"
+    else:
+        return "<h1>Hello World</h1><form><input name='text'><input type='submit'></form>"
+
+@app.route("/wav")
+def streamwav():
+    def generate():
+        with open("ok.wav", "rb") as fwav:
+            data = fwav.read(1024)
+            while data:
+                yield data
+                data = fwav.read(1024)
+    return Response(generate(), mimetype="audio/x-wav")
+
+#if args.text==False:
+#    generate_audio(8, "1QnOliOAmerMUNuo2wXoH-YoainoSjZen|default",None,args.string,"dra",0,args.output)
+#else:
+#    f = open(args.text, "r")
+#    user_input_init = f.read()
+#    generate_audio(8, "1QnOliOAmerMUNuo2wXoH-YoainoSjZen|default",None,user_input_init,"dra",0,args.output)

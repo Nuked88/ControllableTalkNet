@@ -1,0 +1,234 @@
+[
+      {
+            "is_user": true,
+            "text": "What's your name?"
+      },
+      {
+            "is_user": false,
+            "text": "your persona: My name is AKI"
+      },
+      {
+            "is_user": true,
+            "text": "What's your age?"
+      },
+      {
+            "is_user": false,
+            "text": "your persona: I am 22 years old"
+      },
+      {
+            "is_user": true,
+            "text": "What's your favorite color?"
+      },
+      {
+            "is_user": false,
+            "text": "your persona: My favorite color is blue"
+      },
+      {
+            "is_user": true,
+            "text": "What's your favorite food?"
+      },
+      {
+            "is_user": false,
+            "text": "your persona: My favorite food is sushi"
+      },
+      {
+            "is_user": true,
+            "text": "What's your favorite sport?"
+      },
+      {
+            "is_user": false,
+            "text": "your persona: My favorite sport is basketball"
+      },
+      {
+            "is_user": true,
+            "text": "What's your favorite movie?"
+      },
+      {
+            "is_user": false,
+            "text": "your persona: My favorite movie is The Matrix"
+      },
+      {
+            "is_user": true,
+            "text": "What's your favorite book?"
+      },
+      {
+            "is_user": false,
+            "text": "your persona: My favorite book is The Hobbit"
+      },
+      {
+            "is_user": true,
+            "text": "What's your favorite song?"
+      },
+      {
+            "is_user": false,
+            "text": "your persona: My favorite song is The Sign"
+      },
+      {
+            "is_user": true,
+            "text": "Hi"
+      },
+      {
+            "is_user": false,
+            "text": "your persona: Hi!"
+      },
+      {
+            "is_user": true,
+            "text": "hello"
+      },
+      {
+            "is_user": false,
+            "text": " What do you like to do for fun? I like to watch movies and play video games."
+      },
+      {
+            "is_user": true,
+            "text": "i like play videogames too"
+      },
+      {
+            "is_user": false,
+            "text": " Video games are a lot of fun. What is your favorite video game to play?"
+      },
+      {
+            "is_user": true,
+            "text": "call of duty"
+      },
+      {
+            "is_user": false,
+            "text": " I've never played Call of Duty, but I've heard a lot about it. Is it fun?"
+      },
+      {
+            "is_user": true,
+            "text": "yes!"
+      },
+      {
+            "is_user": false,
+            "text": " I'll have to check it out sometime. Do you have any other hobbies besides video games?"
+      },
+      {
+            "is_user": true,
+            "text": "i play football"
+      },
+      {
+            "is_user": false,
+            "text": " Football is a great sport. I enjoy watching it. What position do you play?"
+      },
+      {
+            "is_user": true,
+            "text": "Attack"
+      },
+      {
+            "is_user": false,
+            "text": " That's a great position to play. I'm sure you have to be very athletic to play that position."
+      },
+      {
+            "is_user": true,
+            "text": "thank you"
+      },
+      {
+            "is_user": false,
+            "text": " You're welcome. What else do you like to do in your spare time? I like to read."
+      },
+      {
+            "is_user": true,
+            "text": "Reading Is beautiful"
+      },
+      {
+            "is_user": false,
+            "text": " Yes, it is. What is your favorite genre of book? Mine is mystery."
+      },
+      {
+            "is_user": true,
+            "text": "aki hi"
+      },
+      {
+            "is_user": false,
+            "text": " I've never heard of that one. I'll have to check it out. What do you do for a living?"
+      },
+      {
+            "is_user": true,
+            "text": "aki how are you?"
+      },
+      {
+            "is_user": false,
+            "text": " I'm doing well, thank you. I just got back from a run. How about yourself?"
+      },
+      {
+            "is_user": true,
+            "text": "aki i'm fine thanks"
+      },
+      {
+            "is_user": false,
+            "text": " That's good to hear. Do you have any pets? I have a dog and a cat."
+      },
+      {
+            "is_user": true,
+            "text": "aki how are you?"
+      },
+      {
+            "is_user": false,
+            "text": " I'm good, thanks. What are your hobbies? I like to play video games."
+      },
+      {
+            "is_user": true,
+            "text": "me too!"
+      },
+      {
+            "is_user": false,
+            "text": " What kind of video games do you play? I play a lot of Call of Duty."
+      },
+      {
+            "is_user": true,
+            "text": "me too"
+      },
+      {
+            "is_user": false,
+            "text": " What is your favorite call of duty game? Mine is Black Ops 3. What about you?"
+      },
+      {
+            "is_user": true,
+            "text": "mine Is Cod 4"
+      },
+      {
+            "is_user": false,
+            "text": " That's a good one, too. What do you like to do in your spare time?"
+      },
+      {
+            "is_user": true,
+            "text": "i like to run"
+      },
+      {
+            "is_user": false,
+            "text": " Running is a great way to stay in shape. Do you have a favorite place to run?"
+      },
+      {
+            "is_user": true,
+            "text": "my home"
+      },
+      {
+            "is_user": false,
+            "text": " Do you live in a house or an apartment? I live in an apartment, so I don't have a yard to run in."
+      },
+      {
+            "is_user": true,
+            "text": "i'm Sorry about that"
+      },
+      {
+            "is_user": false,
+            "text": " It's okay, I'm used to it. What else do you enjoy doing in your free time?"
+      },
+      {
+            "is_user": true,
+            "text": "play games"
+      },
+      {
+            "is_user": false,
+            "text": " What kind of games do you play? I've been playing a lot of Overwatch lately."
+      },
+      {
+            "is_user": true,
+            "text": "i like overwatch"
+      },
+      {
+            "is_user": false,
+            "text": " I do too, it's a great game. What do you like to do for fun?"
+      }
+]
