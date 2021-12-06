@@ -34,7 +34,7 @@ from meldataset import mel_spectrogram, MAX_WAV_VALUE
 from models import Generator
 from denoiser import Denoiser
 
-
+import transformers
 from transformers import BlenderbotTokenizer, BlenderbotForConditionalGeneration, AutoTokenizer, AutoModelForSequenceClassification, AutoConfig, Conversation, ConversationalPipeline
 from transformers import AutoModelForSequenceClassification
 from transformers import AutoTokenizer
@@ -42,22 +42,20 @@ import numpy as np
 from scipy.special import softmax
 import csv
 import time
-import rtmidi
+import requests
+import json
+from dotenv import load_dotenv
+import logging
+logging.getLogger('nemo_logger').setLevel(logging.ERROR)
+transformers.logging.set_verbosity_error()
 
 
-#p = ArgumentParser()
-#p.add_argument("--output", "-o", default="output", help="wav output directory", required=True)
-#p.add_argument("--model", "-m", default="1QnOliOAmerMUNuo2wXoH-YoainoSjZen", help="drive ID")
-#p.add_argument("--device", "-d", type=str, default="cuda:0", help="device to use, cpu or cuda")
-#p.add_argument("--string", "-s", default="")
-#p.add_argument("--text", "-t", default=False)
-#args = p.parse_args()
+load_dotenv()
+
+
 
 DEVICE = "cpu" 
 DEVICE2 = "cuda:0" if torch.cuda.is_available() else "cpu"
-midiout = rtmidi.MidiOut()
-available_ports = midiout.get_ports()
-midiout.open_port(2) # Select midi port
 
 
 CPU_PITCH = False
@@ -87,9 +85,9 @@ MODELPR = f"C:\\Users\\nuked\\OneDrive\\Documents\\Script\\TalkNet\\Controllable
 #tokenizer.save_pretrained(MODELP)
 #config.save_pretrained(MODELP)
 
-config_sent = AutoConfig.from_pretrained(MODELP)
-tokenizer_sent = AutoTokenizer.from_pretrained(MODELP)
-model_sent = AutoModelForSequenceClassification.from_pretrained(MODELPR).to(DEVICE2)
+config_sent = AutoConfig.from_pretrained(MODEL_S)
+tokenizer_sent = AutoTokenizer.from_pretrained(MODEL_S)
+model_sent = AutoModelForSequenceClassification.from_pretrained(MODEL_S).to(DEVICE2)
 
 
 
@@ -105,10 +103,7 @@ def preprocess(text):
 
 
 def play(note, duration):
-    midiout.send_message([0x90, note, 0x7f])
-    time.sleep(duration)
-    midiout.send_message([0x80, note, 0x7f])
-
+    pass
 
 def signals(i):
         switcher={
@@ -130,12 +125,10 @@ def file2list(f):
 
 
 def load_history(f,conversation):
-    
     jj = file2list(f)
 
     for j in jj:
         if j["is_user"]==False:
-            #print(j["text"])
             conversation.append_response(j["text"])
             conversation.mark_processed()
         else:
@@ -144,6 +137,13 @@ def load_history(f,conversation):
     return conversation
 
 
+def updateUrl(content):
+    token=os.environ['token']
+    filename=os.environ['filename']
+    gist_id=os.environ['gist_id']
+    headers = {'Authorization': f'token {token}'}
+    r = requests.patch('https://api.github.com/gists/' + gist_id, data=json.dumps({'files':{filename:{"content":content}}}),headers=headers) 
+    print("Update url:",r.status_code)
 
 
 #smart splits that are not cutting words
@@ -625,8 +625,16 @@ def blande_sentiment(UTTERANCE,tokenizer_bb,DEVICE2,model_bb,model_sent,tokenize
     #UTTERANCE= input(f"sss{DEVICE}: ")
     try:
         conversation = Conversation()
+        fname_base="conversations/base_message_conv.json"
         fname=f"conversations/{name}_messages.json"
-        conversation= load_history(fname,conversation)
+
+        if os.path.exists(fname):
+                conversation= load_history(fname,conversation)
+        else:
+            print("loading base conversation")
+            conversation= load_history(fname_base,conversation)
+
+            
 
 
         conversation.add_user_input(UTTERANCE)
@@ -901,33 +909,72 @@ def generate_audio(n_clicks,model,custom_model,transcript,pitch_options,pitch_fa
 
         return None
 
+def readListFromFile(file_path):
+    with open(file_path, 'r') as f:
+        lines = f.readlines()
+    return lines
 
 def sanitize_input(input_str):
-    return input_str.replace("\n", " ").replace("\r", " ").replace("\t", " ").replace("’", "'").replace("“", "\"").replace("”", "\"")
+ 
+    stopwords = readListFromFile("Assets/emoticon.lst")
+
+    for i in stopwords:
+        n=input_str.replace(i.strip(),'')
+        input_str=n
+    result = input_str.strip()
+
+    return result.replace("\n", " ").replace("\r", " ").replace("\t", " ").replace("’", "'").replace("“", "\"").replace("”", "\"").replace("‘","").replace("(",",").replace(")",",")
 
 def sanitize_output(text):
     return text.replace("\n", " ").replace("\r", " ").replace("\t", " ").replace("’", "'").replace("“", "\"").replace("”", "\"").replace("?", "?,")
 
-app  = Flask(__name__)
+
+import os
+import threading
+from flask import Flask
+from flask import request
+from pyngrok import ngrok, conf
+ngrok.kill()
+conf.get_default().auth_token = "1ZntjYUcQx5U4FweGX2xQ3W0kKw_5hdvwbYcoRGoagrCXYWo4"
+os.environ["FLASK_ENV"] = "development"
+
+app = Flask(__name__)
+port = 5000
+
+# Open a ngrok tunnel to the HTTP server
+public_url = ngrok.connect(port).public_url
+print(" * ngrok tunnel \"{}\" -> \"http://127.0.0.1:{}\"".format(public_url, port))
+
+# Update any base URLs to use the public ngrok URL
+app.config["BASE_URL"] = public_url
+
+# ... Update inbound traffic via APIs to use the public-facing ngrok URL
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.args.get("text")!=None:
         #get text
+        author="test"
         req_text = sanitize_input(request.args.get("text"))
         print(req_text)
+        if request.args.get("text")!=None:
+            author=request.args.get("author")
+   
         #get answer and sentiment
-        l,answer = blande_sentiment(req_text,tokenizer_bb,DEVICE2,model_bb,model_sent,tokenizer_sent)
+        l,answer = blande_sentiment(req_text,tokenizer_bb,DEVICE2,model_bb,model_sent,tokenizer_sent,author)
         answer = sanitize_output(answer)
         print(answer)
         #get audio voice
         generate_audio(8, "1QnOliOAmerMUNuo2wXoH-YoainoSjZen|default",None,answer,"dra",0,"ok")
         #send midi for control the character
-        play(signals(l),1.5)
+        #play(signals(l),1.5)
         #create interface and play audio
-        return "<h1>Hello World</h1><form><input name='text'><input type='submit'></form><br><audio controls autoplay>  <source src=\"http://127.0.0.1:5000/wav\" type=\"audio/x-wav\"> </audio>"
+        updateUrl(public_url)
+        audio_url=public_url+"/wav"
+        return  json.dumps([answer,l,audio_url])
+        #return "<h1>Hello World</h1><form><input name='text'><input type='submit'></form><br><audio controls autoplay>  <source src=\""+public_url+"/wav\" type=\"audio/x-wav\"> </audio>"
     else:
-        return "<h1>Hello World</h1><form><input name='text'><input type='submit'></form>"
+        return  json.dumps(["None","None"])
 
 @app.route("/wav")
 def streamwav():
@@ -938,7 +985,7 @@ def streamwav():
                 yield data
                 data = fwav.read(1024)
     return Response(generate(), mimetype="audio/x-wav")
-
+threading.Thread(target=app.run, kwargs={"use_reloader": False}).start()
 #if args.text==False:
 #    generate_audio(8, "1QnOliOAmerMUNuo2wXoH-YoainoSjZen|default",None,args.string,"dra",0,args.output)
 #else:

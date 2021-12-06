@@ -892,7 +892,7 @@ def play_audio(audio_path):
         import subprocess
 
         
-        subprocess.call(["ffplay", "-nodisp","-af","atempo=0.9", "-autoexit","-hide_banner","-loglevel","error", audio_path])
+        subprocess.call(["ffplay", "-nodisp","-af","atempo=0.8", "-autoexit","-hide_banner","-loglevel","error", audio_path])
         #if sys.platform == "win32":
         #    os.startfile(audio_path)
         #else:
