@@ -3,11 +3,7 @@ from typing import Text
 import numpy as np
 import tensorflow as tf
 from scipy.io import wavfile
-from nemo.collections.asr.models import EncDecCTCModel
-from nemo.collections.tts.models import TalkNetSpectModel
-from nemo.collections.tts.models import TalkNetPitchModel
-from nemo.collections.tts.models import TalkNetDursModel
-from talknet_singer import TalkNetSingerModel
+
 import json
 from tqdm import tqdm
 import traceback
@@ -26,9 +22,7 @@ import requests
 
 from twitchio.ext import commands
 from dotenv import load_dotenv
-import logging
-logging.getLogger('nemo_logger').setLevel(logging.ERROR)
-transformers.logging.set_verbosity_error()
+
 
 load_dotenv()
 
