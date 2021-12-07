@@ -185,7 +185,7 @@ def smart_split_list(full_text,max_lenght):
 def load_hifigan(model_name, conf_name):
     # Load HiFi-GAN
     conf = os.path.join("hifi-gan", conf_name + ".json")
-    print(f"Load HiFi-GAN {model_name} conf {conf_name}")
+    #print(f"Load HiFi-GAN {model_name} conf {conf_name}")
     with open(conf) as f:
         json_config = json.loads(f.read())
     h = AttrDict(json_config)
@@ -648,7 +648,7 @@ def blande_sentiment(UTTERANCE,tokenizer_bb,DEVICE2,model_bb,model_sent,tokenize
                 
             })
         output_bb =messages[len(messages)-1]["text"].strip()
-        print(output_bb)
+        
         list2file(messages,fname)
         #inputs = tokenizer_bb([UTTERANCE], return_tensors='pt').to(DEVICE2)
         #reply_ids = model_bb.generate(**inputs)
@@ -760,7 +760,7 @@ def generate_audio(n_clicks,model,custom_model,transcript,pitch_options,pitch_fa
         ]
     
 
-    print("heloo")
+    
     with torch.no_grad():
         if tnpath != talknet_path:
             singer_path = os.path.join(
@@ -789,7 +789,7 @@ def generate_audio(n_clicks,model,custom_model,transcript,pitch_options,pitch_fa
             tnpath = talknet_path
 
             
-        print("heloo")
+        
         token_list = arpa_parse(transcript, tnmodel)
         tokens = torch.IntTensor(token_list).view(1, -1).to(DEVICE)
         arpa = to_arpa(token_list)
@@ -824,7 +824,7 @@ def generate_audio(n_clicks,model,custom_model,transcript,pitch_options,pitch_fa
         if hifipath != hifigan_path:
             hifigan, h, denoiser = load_hifigan(hifigan_path, "config_v1")
             hifipath = hifigan_path
-        print("heloo")
+        
         y_g_hat = hifigan(spect.float())
         audio = y_g_hat.squeeze()
         audio = audio * MAX_WAV_VALUE
@@ -870,7 +870,7 @@ def generate_audio(n_clicks,model,custom_model,transcript,pitch_options,pitch_fa
             num_zeros=8,
         )
         wave_out = wave.astype(np.int16)
-        print("helooa")
+        
         # HiFi-GAN super-resolution
         wave = wave / MAX_WAV_VALUE
         wave = torch.FloatTensor(wave).to(DEVICE)
@@ -888,7 +888,7 @@ def generate_audio(n_clicks,model,custom_model,transcript,pitch_options,pitch_fa
         audio2 = y_g_hat2.squeeze()
         audio2 = audio2 * MAX_WAV_VALUE
         audio2_denoised = denoiser(audio2.view(1, -1), strength=35)[:, 0]
-        print("heloox")
+        
         # High-pass filter, mixing and denormalizing
         audio2_denoised = audio2_denoised.detach().cpu().numpy().reshape(-1)
         b = scipy.signal.firwin(
@@ -901,7 +901,7 @@ def generate_audio(n_clicks,model,custom_model,transcript,pitch_options,pitch_fa
         y_padded[: y_out.shape[0]] = y_out
         sr_mix = wave_out + y_padded
         out_data = pad_audio(sr_mix, 30000, 6)
-        print("heloof")
+        
         buffer = io.BytesIO()
         
         wavfile.write(wav_name+".wav", 30000, out_data.astype(np.int16))
@@ -949,7 +949,7 @@ print(" * ngrok tunnel \"{}\" -> \"http://127.0.0.1:{}\"".format(public_url, por
 app.config["BASE_URL"] = public_url
 
 # ... Update inbound traffic via APIs to use the public-facing ngrok URL
-
+updateUrl(public_url)
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.args.get("text")!=None:
@@ -963,13 +963,13 @@ def index():
         #get answer and sentiment
         l,answer = blande_sentiment(req_text,tokenizer_bb,DEVICE2,model_bb,model_sent,tokenizer_sent,author)
         answer = sanitize_output(answer)
-        print(answer)
+        print(f"Answer: {answer}")
         #get audio voice
         generate_audio(8, "1QnOliOAmerMUNuo2wXoH-YoainoSjZen|default",None,answer,"dra",0,"ok")
         #send midi for control the character
         #play(signals(l),1.5)
         #create interface and play audio
-        updateUrl(public_url)
+        
         audio_url=public_url+"/wav"
         return  json.dumps([answer,l,audio_url])
         #return "<h1>Hello World</h1><form><input name='text'><input type='submit'></form><br><audio controls autoplay>  <source src=\""+public_url+"/wav\" type=\"audio/x-wav\"> </audio>"

@@ -138,14 +138,15 @@ def blande_sentiment(url_server,UTTERANCE,name="test"):
     response = requests.get(url)
     print(response.text)
     resp = json.loads(response.text)
-    label= resp[1]
     answer=resp[0]
+    label= resp[1]
+    waveurl=resp[2]
     print(label)
     print(answer)
     #print(data)
     #print(data["_text"])
     
-    return label,answer 
+    return label,answer,waveurl
 
 
 def sanitize_input(input_str):
@@ -216,7 +217,7 @@ def launch_voice(question,author):
             #get answer and sentiment
             #read content of https://gist.githubusercontent.com/Nuked88/55e78cb995bce277b4482d836c811fb0/raw/gistfile1.txt
             url= requests.get("https://gist.githubusercontent.com/Nuked88/55e78cb995bce277b4482d836c811fb0/raw/gistfile1.txt")
-            l,answer = blande_sentiment(url.text,req_text,author)
+            l,answer,waveurl = blande_sentiment(url.text,req_text,author)
             answer = sanitize_output(f"{answer}")
 
         else:
@@ -229,7 +230,7 @@ def launch_voice(question,author):
     #send midi for control the character
     play(signals(l),1.5)
     print(f"Playing audio of: {answer}")
-    play_audio("ok.wav")     
+    play_audio(waveurl)     
 
     writeFile("current.txt", f" ")
     #remove file .lock
