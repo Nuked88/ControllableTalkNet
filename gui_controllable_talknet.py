@@ -54,7 +54,7 @@ load_dotenv()
 
 
 
-DEVICE = "cpu" 
+DEVICE = "cuda:0" 
 DEVICE2 = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 
@@ -195,7 +195,7 @@ def load_hifigan(model_name, conf_name):
     hifigan.load_state_dict(state_dict_g["generator"])
     hifigan.eval()
     hifigan.remove_weight_norm()
-    denoiser = Denoiser(hifigan, mode="normal")
+    denoiser = Denoiser(hifigan, mode="normal", device=DEVICE )
     return hifigan, h, denoiser
 
 
@@ -985,6 +985,8 @@ def streamwav():
                 yield data
                 data = fwav.read(1024)
     return Response(generate(), mimetype="audio/x-wav")
+
+
 threading.Thread(target=app.run, kwargs={"use_reloader": False}).start()
 #if args.text==False:
 #    generate_audio(8, "1QnOliOAmerMUNuo2wXoH-YoainoSjZen|default",None,args.string,"dra",0,args.output)
