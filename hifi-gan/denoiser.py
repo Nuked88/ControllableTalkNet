@@ -11,7 +11,7 @@ class Denoiser(torch.nn.Module):
     ):
         super(Denoiser, self).__init__()
    
-
+        self.device = device
         self.stft = STFT(
             filter_length=filter_length,
             hop_length=int(filter_length / n_overlap),
