@@ -85,15 +85,15 @@ MODELPR = f"C:\\Users\\nuked\\OneDrive\\Documents\\Script\\TalkNet\\Controllable
 #tokenizer.save_pretrained(MODELP)
 #config.save_pretrained(MODELP)
 
-#config_sent = AutoConfig.from_pretrained(MODEL_S)
-#tokenizer_sent = AutoTokenizer.from_pretrained(MODEL_S)
-#model_sent = AutoModelForSequenceClassification.from_pretrained(MODEL_S).to(DEVICE2)
+config_sent = AutoConfig.from_pretrained(MODEL_S)
+tokenizer_sent = AutoTokenizer.from_pretrained(MODEL_S)
+model_sent = AutoModelForSequenceClassification.from_pretrained(MODEL_S).to(DEVICE2)
 
 
 
-config_sent = AutoConfig.from_pretrained(MODELP)
-tokenizer_sent = AutoTokenizer.from_pretrained(MODELP)
-model_sent = AutoModelForSequenceClassification.from_pretrained(MODELPR).to(DEVICE2)
+#config_sent = AutoConfig.from_pretrained(MODELP)
+#tokenizer_sent = AutoTokenizer.from_pretrained(MODELP)
+#model_sent = AutoModelForSequenceClassification.from_pretrained(MODELPR).to(DEVICE2)
 
 
 def preprocess(text):
